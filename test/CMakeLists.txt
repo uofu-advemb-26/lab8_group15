@@ -5,6 +5,7 @@ target_link_libraries(mytest PRIVATE
   pico_async_context_freertos
   FreeRTOS-Kernel-Heap4
   unity
+  can2040
 )
 
 # The CYW43 is the Wifi/Bluetooth module. If the board is set to pico_w, this
