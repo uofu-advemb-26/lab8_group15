@@ -6,15 +6,55 @@
 #include "pico/cyw43_arch.h"
 #include <can2040.h>
 #include <hardware/regs/intctrl.h>
+#include <queue.h>
+#include <string.h>
+#include <stdatomic.h>
 
-#define MAIN_TASK_PRIORITY      ( tskIDLE_PRIORITY + 1UL )
-#define MAIN_TASK_STACK_SIZE configMINIMAL_STACK_SIZE
+#define MAIN_TASK_PRIORITY      ( tskIDLE_PRIORITY + 2UL )
+#define MAIN_TASK_STACK_SIZE 512
+#define PRINT_TASK_PRIORITY      ( tskIDLE_PRIORITY + 1UL )
+#define PRINT_TASK_STACK_SIZE 512
 
 static struct can2040 cbus;
+#define CAN_ID 0x0F5
+#define CAN_RX_SIZE 9
+
+typedef struct
+{
+    uint8_t str[CAN_RX_SIZE]; // Support up to 8 characters plus null-terminator
+} can_msg;
+QueueHandle_t callback_msg_queue;
+volatile atomic_bool rx_error = 0;
 
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
-    
+    can_msg str;
+    // A message was received
+    if ((notify & CAN2040_NOTIFY_RX) && (msg->id == CAN_ID))
+    {
+        // There's an error if the transmitted message says the message was larger than 
+        // supported here (only transmission sizes of 8 bytes are supported)
+        if (msg->dlc > (CAN_RX_SIZE - 1)) // Leave room for null terminator
+        {
+            atomic_store(&rx_error, true);
+            return;
+        }
+
+        // Copy the transmitted message with a null terminator
+        memcpy(&str.str[0], msg->data, msg->dlc);
+        str.str[msg->dlc] = '\0';
+
+        // Send the message to the print function (no delay possible)
+        if (xQueueSendFromISR(callback_msg_queue, &str, NULL) != pdPASS)
+        {
+            atomic_store(&rx_error, true);
+        }
+    }
+    // Generic error
+    else if (notify & CAN2040_NOTIFY_ERROR)
+    {
+        atomic_store(&rx_error, true);
+    }
 }
 
 static void PIOx_IRQHandler(void)
@@ -42,16 +82,52 @@ void canbus_setup(void)
 }
 
 void main_task(__unused void *params) {
-    
+    // Program the PIO, setup callbacks, and start processing CAN messages
+    canbus_setup();
+
+    // All future work will happen through callbacks; this task is no longer needed
+    vTaskDelete(NULL);
+}
+
+void print_task(__unused void *params)
+{
+    can_msg received_msg;
+    while (1)
+    {
+
+        // Print received messages
+        if (xQueueReceive(callback_msg_queue, &received_msg, pdMS_TO_TICKS(1000)) == pdTRUE)
+        {
+            printf("[RX] Received message '%s'\n", received_msg.str);
+        }
+
+        // Output if an error has occurred
+        if (atomic_load(&rx_error))
+        {
+            printf("[RX] An error occurred\n");
+            atomic_store(&rx_error, false);
+        }
+    }
 }
 
 int main( void )
 {
-    canbus_setup();
     stdio_init_all();
+
+    // Give time for terminal to be attached
+    sleep_ms(5000);
+    
+    // Initialize a queue to hold 10 CAN messages from the CAN callback
+    if ((callback_msg_queue = xQueueCreate(10, sizeof(can_msg))) != NULL)
+    {
+        printf("[RX] Initialized queue\n");
+    }
+
     TaskHandle_t task;
     xTaskCreate(main_task, "MainThread",
                 MAIN_TASK_STACK_SIZE, NULL, MAIN_TASK_PRIORITY, &task);
+    xTaskCreate(print_task, "PrintThread",
+                PRINT_TASK_STACK_SIZE, NULL, PRINT_TASK_PRIORITY, NULL);
     vTaskStartScheduler();
     return 0;
 }
