@@ -54,7 +54,7 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
         }
     }
     // A message was received
-    else if ((notify & CAN2040_NOTIFY_RX) && (msg->id == CAN_ID))
+    else if (notify & CAN2040_NOTIFY_RX)
     {
         // There's an error if the transmitted message says the message was larger than 
         // supported here (only transmission sizes of 8 bytes are supported)
@@ -162,7 +162,7 @@ void print_task(__unused void *params)
         // Output if an error has occurred
         if (atomic_load(&can_error))
         {
-            printf("[TX] A transmission error occurred\n");
+            printf("[CAN] An error occurred\n");
             atomic_store(&can_error, false);
         }
     }
@@ -178,7 +178,7 @@ int main( void )
     // Initialize a queue to hold 10 CAN messages from the CAN callback
     if ((callback_msg_queue = xQueueCreate(10, sizeof(can_msg))) != NULL)
     {
-        printf("[TX] Initialized queue\n");
+        printf("[CAN] Initialized queue\n");
     }
 
     TaskHandle_t task;
