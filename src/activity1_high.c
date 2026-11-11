@@ -119,7 +119,7 @@ void main_task(__unused void *params) {
     msg.id &= ~CAN2040_ID_RTR;
 
     // Set up the packet to transmit "CANbus"
-    char content[] = "CANbus";
+    char content[] = "HighPR";
     msg.dlc = strlen(content); // Not counting null-terminator
     memcpy(&msg.data[0], content, msg.dlc); // Don't copy null-terminator
 
@@ -135,8 +135,7 @@ void main_task(__unused void *params) {
             printf("[TX] Queued message for transmission\n");
         }
 
-        // Send message every second
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        sleep_us(10000);
     }
 }
 

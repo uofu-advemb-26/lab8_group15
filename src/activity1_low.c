@@ -119,7 +119,7 @@ void main_task(__unused void *params) {
     msg.id &= ~CAN2040_ID_RTR;
 
     // Set up the packet to transmit "CANbus"
-    char content[] = "CANbus";
+    char content[] = "LowPRI";
     msg.dlc = strlen(content); // Not counting null-terminator
     memcpy(&msg.data[0], content, msg.dlc); // Don't copy null-terminator
 
